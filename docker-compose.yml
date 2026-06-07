@@ -1,0 +1,47 @@
+# Standalone docker-compose for avry-blog (development)
+# For full-stack: use docker-compose.full-stack.yml from project root
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: avry-blog-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: aivery
+    volumes:
+      - blog_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  avry-blog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avry-blog
+    ports:
+      - "8089:8089"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/aivery
+      PORT: 8089
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-local_development_secret_key_change_in_production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  blog_pg_data:
