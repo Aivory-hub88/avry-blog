@@ -191,3 +191,21 @@ class TestRequireAdmin:
             await require_admin(user=payload)
         assert exc.value.status_code == 403
         assert exc.value.detail == "Admin access required"
+
+
+class TestRefreshTokensRejected:
+    """Backend refresh tokens share JWT_SECRET but aren't bearer credentials."""
+
+    @patch("app.auth.settings")
+    def test_typed_and_legacy_refresh_rejected(self, mock_settings):
+        mock_settings.supabase_jwt_secret = SUPABASE_SECRET
+        mock_settings.jwt_secret = LEGACY_SECRET
+        for claims in ({"user_id": "u1", "session_id": "s1", "type": "refresh"}, {"user_id": "u1", "session_id": "s1"}):
+            assert verify_token(_make_token(claims, LEGACY_SECRET)) is None
+
+    @patch("app.auth.settings")
+    def test_access_and_supabase_tokens_still_verify(self, mock_settings):
+        mock_settings.supabase_jwt_secret = SUPABASE_SECRET
+        mock_settings.jwt_secret = LEGACY_SECRET
+        assert verify_token(_make_token({"user_id": "u1", "type": "access"}, LEGACY_SECRET))["user_id"] == "u1"
+        assert verify_token(_make_token({"sub": "u1", "session_id": "sb"}, SUPABASE_SECRET))["sub"] == "u1"

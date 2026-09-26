@@ -30,6 +30,18 @@ def _extract_token(authorization: Optional[str]) -> Optional[str]:
     return authorization.strip() or None
 
 
+def _is_refresh_token(payload: dict) -> bool:
+    """
+    Backend-issued refresh tokens share JWT_SECRET with access tokens but are
+    not bearer credentials: they live 30 days and keep verifying after logout
+    (logout only deletes the session row the backend's /refresh consults).
+    Newer ones carry type "refresh"; older untyped ones always carry
+    session_id, which backend access tokens never do.
+    """
+    kind = payload.get("type")
+    return kind == "refresh" or (kind is None and "session_id" in payload)
+
+
 def verify_token(token: str) -> Optional[dict]:
     """
     Verify a JWT against configured secrets (jwt_secret first, supabase fallback).
@@ -47,9 +59,17 @@ def verify_token(token: str) -> Optional[dict]:
                 algorithms=[JWT_ALGORITHM],
                 options={"verify_aud": False},
             )
-            return payload
         except JWTError:
             continue
+        # Only for backend-signed tokens: Supabase access tokens legitimately
+        # carry session_id.
+        if (
+            secret == settings.jwt_secret
+            and secret != settings.supabase_jwt_secret
+            and _is_refresh_token(payload)
+        ):
+            return None
+        return payload
     return None
 
 
